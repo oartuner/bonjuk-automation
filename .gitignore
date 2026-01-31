@@ -1,7 +1,13 @@
-venv/
+
+# System & User specific
+.gemini/
+.vscode/
+.idea/
+*.log
 __pycache__/
-.env
 *.pyc
+
+# Project specific
+.env
 config/credentials.json
-.DS_Store
 tests/.pytest_cache/
