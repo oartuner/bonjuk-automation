@@ -1,0 +1,28 @@
+# 🧿 Bonjuk Project Context & AI Rules
+
+## Project Identity
+- **Name:** Bonjuk Operational Automation
+- **Mission:** Automating operational workflows to increase efficiency and standardization.
+- **Region:** Türkiye (Always use "Türkiye" instead of "Turkey").
+
+## Tech Stack & Tools
+- **Core:** Python 3.10+, Docker
+- **Automation:** n8n, GitHub Actions
+- **Data:** Google Sheets (as lightweight DB), PostgreSQL
+- **IDE:** AI-Assisted (Cursor/VS Code)
+
+## AI Behavior & Coding Standards
+1. **Context Awareness:** Before writing code, always check `OPERATIONS.md` for business logic.
+2. **Naming Conventions:** Use `snake_case` for Python, `kebab-case` for files.
+3. **Error Handling:** Every automation script MUST have try-except blocks with explicit logging.
+4. **Localization:** Date formats should be DD/MM/YYYY. Timezone is Europe/Istanbul.
+
+## Directory Map
+- `.github/workflows/` -> CI/CD pipelines (Automation logic)
+- `src/` -> Python scripts and main application logic
+- `config/` -> Environment variables and settings
+- `tests/` -> Pytest files
+
+## Key Instructions for AI
+- When I ask for a "workflow", prioritize **n8n** compatible JSON structures or Python scripts.
+- Ensure all Docker images are tagged with the commit SHA.

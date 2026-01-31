@@ -1,0 +1,22 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - TZ=Europe/Istanbul
+    volumes:
+      - n8n_data:/home/node/.local/share/n8n
+
+  bonjuk-ops:
+    build: .
+    depends_on:
+      - n8n
+    environment:
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook/bonjuk-trigger
+      - APP_ENV=production
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
