@@ -323,8 +323,8 @@ Bonjuk Bay'e ilgine teşekkür ederiz, sizi aramızda görmeyi çok isteriz.
 
 Referans olması için 2026 fiyat listemize ve konaklama seçeneklerimize aşağıdaki bağlantılardan ulaşabilirsin:
 
-📄 Fiyat Listesi: https://bonjukbay.com/price
-🏠 Konaklama: https://bonjukbay.com/accommodation
+📄 Fiyat Listesi: https://bit.ly/Bonjukbay_FiyatListesi
+🏠 Konaklama: https://bonjukbay.com/accommodation.html
 
 {check_in} - {check_out} tarihleri arasındaki rezervasyonunu {room_type} için opsiyonladık.
 
@@ -385,8 +385,8 @@ Warm hugs! ✨""",
 
 Thank you for your interest in Bonjuk Bay! We can't wait to see you with us.
 
-📄 Price List: https://bonjukbay.com/price
-🏠 Accommodation: https://bonjukbay.com/accommodation
+📄 Price List: https://bit.ly/Bonjukbay_FiyatListesi
+🏠 Accommodation: https://bonjukbay.com/accommodation.html
 
 We have optioned your reservation for {room_type} between {check_in} - {check_out} for 24 hours.
 
