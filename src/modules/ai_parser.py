@@ -114,7 +114,7 @@ class AIParser:
         Referans olması için 2026 fiyat listemize ve konaklama seçeneklerimize aşağıdaki bağlantılardan ulaşabilirsin:
         
         2026 Fiyat Listesi:
-        https://bonjukbay-my.sharepoint.com/personal/reservation_bonjukbay_com/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Freservation%5Fbonjukbay%5Fcom%2FDocuments%2FBerk%20Lenovo%20Desktop%2FBonjuk%20Bay%2025%20%2D%20Price%20List%2Epdf&parent=%2Fpersonal%2Freservation%5Fbonjukbay%5Fcom%2FDocuments%2FBerk%20Lenovo%20Desktop&ga=1
+        https://bit.ly/Bonjukbay_FiyatListesi
         
         Konaklama Seçenekleri:
         https://bonjukbay.com/accommodation.html
