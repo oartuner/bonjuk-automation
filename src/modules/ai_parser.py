@@ -46,6 +46,7 @@ class AIParser:
         - accommodation_type (Oda/Çadır tipi)
         - guest_language (tr veya en - EĞER 'Id Number' varsa veya 'nationality' Turkish ise KESİNLİKLE 'tr' seç. Sadece 'Passport Number' varsa ve Türkçe konuşmuyorsa 'en' seç.)
         - nationality (Turkish veya Foreign - ID varsa Turkish, Passport varsa Foreign)
+        - special_requests (Özel istekler, notlar, mesaj - varsa doğum günü pastası, erken check-in vb.)
         - missing_info (Eksik olan alanların listesi)
 
         E-posta Metni:

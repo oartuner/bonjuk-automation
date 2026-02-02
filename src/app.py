@@ -157,6 +157,7 @@ elif menu == "📅 Rezervasyon Talebi":
                     st.session_state['form_lang'] = parsed_data.get('guest_language', "tr")
                     st.session_state['form_nationality'] = parsed_data.get('nationality', "")
                     st.session_state['form_room_type'] = parsed_data.get('accommodation_type', "Sea View Room")
+                    st.session_state['form_special_requests'] = parsed_data.get('special_requests', "")
 
                     st.success("Veriler başarıyla ayıklandı! 👇 Aşağıdaki formu kontrol edip '✅ Bilgileri Onayla' butonuna basın.")
                 else:
@@ -178,6 +179,9 @@ elif menu == "📅 Rezervasyon Talebi":
         
         pax = st.number_input("Kişi Sayısı (Pax)", min_value=1, value=int(p.get('pax', 1)) if isinstance(p.get('pax'), int) else 1, key="form_pax")
         room_type = st.selectbox("Oda Tipi", ["Sea View Room", "Sea Front Room", "Lotus Bell Tent", "Safari Tent", "Kendi Çadırı"], index=0, key="form_room_type")
+        
+        special_requests = st.text_area("📝 Özel İstekler / Notlar", value=p.get('special_requests', ""), height=100, key="form_special_requests", 
+                                        help="Doğum günü pastası, erken check-in, özel yemek tercihleri vb.")
         
         notes = st.text_area("Özel Notlar (Alerji, Kutlama vb.)", key="form_notes")
         
