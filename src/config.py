@@ -18,38 +18,41 @@ if env_path.exists():
 else:
     logger.warning(f".env BULUNAMADI: {env_path}")
 
+# Helper function to read from env or streamlit secrets
+def get_setting(key, default=None):
+    """
+    Önce environment variable'ı kontrol eder, yoksa Streamlit secrets'a bakar.
+    Bu sayede hem yerelde (.env) hem de Streamlit Cloud'da çalışır.
+    """
+    # 1. Environment Variable (Yerel .env dosyasından)
+    val = os.getenv(key)
+    if val:
+        return val
+    
+    # 2. Streamlit Secrets (Cloud)
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+        
+    return default
+
 # Konfigürasyon Sınıfı
 class Config:
-    # Helper to get env or secret
-    @staticmethod
-    def get_setting(key, default=None):
-        # 1. Önce Environment Variable'a bak (Yerel .env)
-        val = os.getenv(key)
-        if val:
-            return val
-        
-        # 2. Yoksa Streamlit Secrets'a bak (Cloud)
-        try:
-            import streamlit as st
-            if key in st.secrets:
-                return st.secrets[key]
-        except:
-            pass
-            
-        return default
-
     # App
     ENV = os.getenv("APP_ENV", "development")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
     # Email (Gmail/Outlook)
-    EMAIL_HOST = get_setting.__func__("EMAIL_HOST")
-    EMAIL_PORT = int(get_setting.__func__("EMAIL_PORT", 993))
-    EMAIL_USER = get_setting.__func__("EMAIL_USER")
-    EMAIL_PASS = get_setting.__func__("EMAIL_PASS")
+    EMAIL_HOST = get_setting("EMAIL_HOST")
+    EMAIL_PORT = int(get_setting("EMAIL_PORT", "993"))
+    EMAIL_USER = get_setting("EMAIL_USER")
+    EMAIL_PASS = get_setting("EMAIL_PASS")
     
     # AI
-    GEMINI_API_KEY = get_setting.__func__("GEMINI_API_KEY")
+    GEMINI_API_KEY = get_setting("GEMINI_API_KEY")
 
     # Supabase (Optional)
     SUPABASE_URL = os.getenv("SUPABASE_URL")
