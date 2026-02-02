@@ -1,10 +1,7 @@
-import os
-import json
 import logging
+import json
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.config import config
 
 logger = logging.getLogger("BonjukOps.AI")
 
@@ -13,29 +10,26 @@ class AIParser:
     E-posta metinlerinden AI (Gemini) kullanarak veri ayıklayan servis.
     """
     def __init__(self):
-        self._check_enabled()
-        # Default to 2.5 flash as it is available for this key
+        self.api_key = config.GEMINI_API_KEY
+        # Kullanıcının API anahtarına tanımlı tek model 'gemini-2.5-flash'.
         self.model_name = "gemini-2.5-flash"
         self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-
-    def _check_enabled(self):
-        """
-        API anahtarını kontrol eder ve gerekirse yükler. 
-        Streamlit açıkken .env güncellenirse diye dinamik kontrol sağlar.
-        """
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        
         if self.api_key:
             self.enabled = True
         else:
             self.enabled = False
+            logger.warning("GEMINI_API_KEY eksik, AI devre dışı.")
 
     def parse_reservation(self, email_text: str):
         """
         E-posta metnini Gemini'ye gönderir ve JSON olarak ayıklar.
         """
-        if not hasattr(self, 'enabled') or not self.enabled:
-            load_dotenv() # .env'yi tekrar okumaya zorla
-            self._check_enabled()
+        if not self.enabled:
+            # Config'den tekrar kontrol et (runtime update ihtimaline karşı opsiyonel)
+            if config.GEMINI_API_KEY:
+                self.api_key = config.GEMINI_API_KEY
+                self.enabled = True
 
         if not self.enabled:
             return None
@@ -199,24 +193,27 @@ class AIParser:
                     result = response.json()
                     # Gemini bazen markdown içinde döndürür, temizle
                     raw_text = result['candidates'][0]['content']['parts'][0]['text']
-                    if template_type == "parsing": # Sadece parsing için json temizliği yap
+                    
+                    if template_type == "parsing": 
+                         # JSON temizliği (Markdown bloklarını kaldır)
                          json_str = raw_text.strip().replace('```json', '').replace('```', '')
                          return json.loads(json_str)
+
                     return raw_text # Normal text döner
 
                 elif response.status_code == 429:
-                    if attempt < max_retries - 1:
-                        import time
-                        wait_time = retry_delay * (attempt + 1)
-                        logger.warning(f"Rate limit (429). {wait_time}sn bekleniyor... (Deneme {attempt+1}/{max_retries})")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        return "⚠️ Google AI Hız Sınırı Aşıldı (429). Lütfen daha sonra tekrar deneyin."
+                    logger.warning(f"Rate limit hit. Waiting {attempt+1}")
+                    continue
                 else:
+                    error_msg = f"API Hatası: {response.status_code} - {response.text}"
+                    print(error_msg) # Terminalde görmek için
+                    logger.error(error_msg)
                     return f"Hata: {response.status_code}"
                     
             except Exception as e:
+                error_msg = f"AI Hatası Exception: {str(e)}"
+                print(error_msg)
+                logger.error(error_msg)
                 return f"AI Hatası: {str(e)}"
 
 # Singleton instance

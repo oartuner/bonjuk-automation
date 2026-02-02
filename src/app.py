@@ -7,6 +7,7 @@ from modules.reservation import validate_reservation
 from modules.transfers import determine_vehicle_type, get_transfer_price_estimate, generate_supplier_order
 from modules.email_hook import email_hook
 from modules.ai_parser import ai_parser
+from src.config import config
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,12 @@ st.markdown("""
 st.sidebar.title("🧿 Bonjuk Ops")
 menu = st.sidebar.radio("Menü", ["🏠 Ana Sayfa", "📅 Rezervasyon Talebi", "🚗 Transfer Planlayıcı", "📜 Hazır Yanıtlar"])
 
+# Session State Başlatma (Eğer yoksa)
+if 'temp_res_data' not in st.session_state:
+    st.session_state['temp_res_data'] = ""
+if 'mail_transfer_success' not in st.session_state:
+    st.session_state['mail_transfer_success'] = False
+
 def show_dashboard():
     st.title("🧿 Bonjuk Ops Dashboard")
     st.subheader(f"Bugün: {datetime.now().strftime('%d/%m/%Y')}")
@@ -49,6 +56,7 @@ def show_dashboard():
     
     col_sim1, col_sim2 = st.columns(2)
     
+    # Simülasyon Butonu
     if col_sim1.button("Simülasyon Modu (Alper Yılmaz .eml)", key="sim_mode_btn"):
         st.session_state['show_simulation'] = True
     
@@ -59,25 +67,43 @@ def show_dashboard():
             st.text_area("İçerik:", sample['body'], height=150, key="sim_text_display", disabled=True)
             if st.button("Simüle Edilen Talebi Aktar (Test)", key="transfer_sim_btn"):
                 st.session_state['temp_res_data'] = sample['body']
-                st.session_state['show_simulation'] = False # İşlem bitince kapat
-                st.success("Simülasyon verisi yakalandı! Şimdi 'Rezervasyon Talebi' sekmesine geçin. 🧿")
+                st.session_state['show_simulation'] = False 
+                st.session_state['mail_transfer_success'] = True
+                st.rerun()
 
+    # Gerçek Email Butonu
     if col_sim2.button("Gerçek E-postaları Tara", key="real_email_btn"):
         if email_hook.enabled:
             with st.spinner("Gelen kutuna bakıyorum..."):
                 recent_emails = email_hook.fetch_unseen_emails()
                 if recent_emails:
-                    for em in recent_emails:
-                        with st.expander(f"✉️ {em['subject']} ({em['from']})"):
-                            st.write(f"**Tarih:** {em['date']}")
-                            st.text_area("İçerik:", em['body'][:500] + "...", height=150, key=f"text_{em['id']}")
-                            if st.button(f"Talebi Uygulamaya Aktar", key=f"btn_{em['id']}"):
-                                st.session_state['temp_res_data'] = em['body']
-                                st.success("Veri yakalandı! 'Rezervasyon Talebi' sekmesinde AI ile işleyebilirsiniz. 🧿")
+                    st.session_state['fetched_emails'] = recent_emails # Cache results temporarily
                 else:
+                    st.session_state['fetched_emails'] = []
                     st.success("Harika! Okunmamış rezervasyon maili yok. 🧿")
-    else:
-        st.warning("⚠️ E-posta bağlantısı kurulu değil. Lütfen .env dosyasını kontrol edin.")
+        else:
+             st.warning("⚠️ E-posta bağlantısı kurulu değil. Lütfen .env dosyasını kontrol edin.")
+
+    # E-mailleri Listele (Varsa)
+    if 'fetched_emails' in st.session_state and st.session_state['fetched_emails']:
+        for em in st.session_state['fetched_emails']:
+            with st.expander(f"✉️ {em['subject']} ({em['from']})"):
+                st.write(f"**Tarih:** {em['date']}")
+                st.text_area("İçerik:", em['body'][:500] + "...", height=150, key=f"text_{em['id']}")
+                
+                # Transfer Butonu
+                if st.button(f"Talebi Uygulamaya Aktar", key=f"btn_{em['id']}"):
+                    st.session_state['temp_res_data'] = em['body']
+                    st.session_state['mail_transfer_success'] = True
+                    # E-posta listesini temizle ki kafa karışmasın
+                    del st.session_state['fetched_emails']
+                    st.rerun()
+
+    # Başarı Mesajı (Yeniden Yönlendirme Uyarısı)
+    if st.session_state.get('mail_transfer_success'):
+        st.success("✅ Veri başarıyla yakalandı! Lütfen soldaki menüden '📅 Rezervasyon Talebi' sekmesine geçin.")
+        # Kullanıcı mesajı gördükten sonra bu flag'i kaldırabiliriz
+        # Ama şimdilik kalsın, rezervasyon sayfasına geçince silinir.
 
     st.divider()
     st.info("💡 Not: Supabase entegrasyonu devre dışı bırakıldı. Veriler yerel olarak AI ile işlenmektedir.")
@@ -114,7 +140,7 @@ elif menu == "📅 Rezervasyon Talebi":
 
                     st.success("Veriler başarıyla ayıklandı! 👇 Aşağıdaki formu kontrol edip '✅ Bilgileri Onayla' butonuna basın.")
                 else:
-                    st.error("AI veriyi okurken bir sorun yaşadı.")
+                    st.error("AI veriyi okuyamadı. (Detay: API yanıt vermedi veya format hatalı)")
 
     st.divider()
 
@@ -216,92 +242,92 @@ elif menu == "🚗 Transfer Planlayıcı":
 
 elif menu == "📜 Hazır Yanıtlar":
     st.header("📖 Bonjuk Bay Ortak Yanıt Kütüphanesi")
-    lang_tab = st.radio("Dil Seçimi / Language Selection", ["Türkçe 🇹🇷", "English 🇺🇸"], horizontal=True)
+    
+    # Onaylanmış rezervasyon verisini al (varsa)
+    res_data = st.session_state.get('approved_data', {})
+    parsed_res = st.session_state.get('parsed_res', {})
+    
+    # Verileri hazırla (önce approved_data, yoksa parsed_res, yoksa placeholder)
+    guest_name = res_data.get('guest_name') or parsed_res.get('guest_name', '[Misafir Adı]')
+    first_name = guest_name.split()[0].title() if guest_name and guest_name != '[Misafir Adı]' else '[Ad]'
+    check_in = res_data.get('check_in') or parsed_res.get('check_in', '[Giriş Tarihi]')
+    check_out = res_data.get('check_out') or parsed_res.get('check_out', '[Çıkış Tarihi]')
+    room_type = res_data.get('room_type') or parsed_res.get('accommodation_type', '[Oda Tipi]')
+    pax = res_data.get('pax') or parsed_res.get('pax', '[Kişi Sayısı]')
+    nationality = parsed_res.get('nationality', 'Foreign')
+    missing_info = res_data.get('missing_info') or parsed_res.get('missing_info', [])
+    missing_info_str = ', '.join(missing_info) if isinstance(missing_info, list) and missing_info else '[Eksik Bilgi]'
+
+    # Otomatik dil seçimi: Türk ise TR, değilse EN
+    auto_lang_index = 0 if nationality == 'Turkish' else 1
+    lang_options = ["Türkçe 🇹🇷", "English 🇺🇸"]
+    
+    # Dil seçimi (otomatik önerilir ama kullanıcı değiştirebilir)
+    lang_tab = st.radio("Dil Seçimi / Language Selection", lang_options, index=auto_lang_index, horizontal=True)
+    
+    if res_data or parsed_res:
+        st.success(f"📌 Aktif Rezervasyon: **{guest_name}** | {check_in} → {check_out} | {pax} Kişi | {room_type}")
 
     if lang_tab == "Türkçe 🇹🇷":
         templates = {
-            "🆕 Yeni Talep Karşılama": """Dear [Misafir Adı],
+            "🆕 Yeni Talep Karşılama": f"""Sevgili {first_name},
 
 Rezervasyon talebiniz bize ulaştı. En kısa sürede sizinle iletişime geçeceğiz.
 
 **Rezervasyon Detayları:**
-- Guest Name: [Ad Soyad]
-- Room Type: [Oda Tipi]
-- Check-In: [Tarih]
-- Check-Out: [Tarih]
-- Pax: [Sayı]
+- Misafir Adı: {guest_name}
+- Oda Tipi: {room_type}
+- Giriş: {check_in}
+- Çıkış: {check_out}
+- Kişi Sayısı: {pax}
 
 Teşekkürler,
 Bonjuk Bay Team 🧿""",
-            "❓ Eksik Bilgi Talebi": """Sevgili [Ad],
+            "❓ Eksik Bilgi Talebi": f"""Sevgili {first_name},
 
 Rezervasyon talebin harika görünüyor. Seni aramızda görmeyi çok isteriz.
 
 Size en uygun yerleşimi yapabilmemiz için ufak bir detaya ihtiyacımız var:
-👉 **[Eksik Alan Giriniz]**
+👉 **{missing_info_str}**
 
 Bu bilgiyi bizimle paylaşırsan işlemlere hemen devam edebiliriz.
 
 Warm hugs! ✨""",
-            "✅ Konfirmasyon & Ödeme": """Sevgili [Ad],
+            "✅ Konfirmasyon & Ödeme": f"""Sevgili {first_name},
 
 Bonjuk Bay'e ilgine teşekkür ederiz, sizi aramızda görmeyi çok isteriz.
 
 Referans olması için 2026 fiyat listemize ve konaklama seçeneklerimize aşağıdaki bağlantılardan ulaşabilirsin:
 
-2026 Fiyat Listesi:
-https://bonjukbay-my.sharepoint.com/personal/reservation_bonjukbay_com/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Freservation%5Fbonjukbay%5Fcom%2FDocuments%2FBerk%20Lenovo%20Desktop%2FBonjuk%20Bay%2025%20%2D%20Price%20List%2Epdf&parent=%2Fpersonal%2Freservation%5Fbonjukbay%5Fcom%2FDocuments%2FBerk%20Lenovo%20Desktop&ga=1
+📄 Fiyat Listesi: https://bonjukbay.com/price
+🏠 Konaklama: https://bonjukbay.com/accommodation
 
-Konaklama Seçenekleri:
-https://bonjukbay.com/accommodation.html
-
-[Giriş] - [Çıkış] tarihleri arasındaki rezervasyonunu [Oda Tipi] için opsiyonladık.
-Konaklama ücretimiz [Tutar] olup, erken rezervasyon indirimi vb. uygulanmıştır.
+{check_in} - {check_out} tarihleri arasındaki rezervasyonunu {room_type} için opsiyonladık.
 
 Rezervasyonunu onaylamak için aşağıdaki hesap bilgilerimize ödeme göndermeni ve dekontu bizimle paylaşmanı rica ederiz.
 
-Kredi kartıyla ödemek istersen de aşağıdaki linki kullanabilirsin:
-[ÖDEME LINKI]
-
 Rezervasyonunu 24 saatliğine opsiyonluyoruz.
 
-Hesap Adı : GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
-IBAN : TR490006701000000034479515
-SWIFT Kodu (EUR, USD) : YAPITRISXXX
-SWIFT Kodu (Diğer Döviz Cinsleri) : YAPITRISFEX
-Açıklama: [Misafir Adı] / [Giriş Tarihi]
+🏦 Hesap Adı: GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
+IBAN: TR490006701000000034479515
+SWIFT (EUR/USD): YAPITRISXXX
+Açıklama: {guest_name} / {check_in}
 
-2026 Update: Bu sezon ritmimizi biraz daha gündüze taşıyoruz. Hafta sonu 01:00’den sonra müzik olmayacak. Doğanın, dengenin ve anda kalmanın önceliklendiği; daha yumuşak, daha bilinçli ve daha sağlıklı bir Bonjuk deneyimine davetlisin!
+Warm hugs! 🧿""",
+            "🚫 Müsaitlik Yok": f"""Sevgili {first_name},
 
-Warm hugs!""",
-            "🚫 Müsaitlik Yok (Alternatif Öneri)": """Sevgili [Ad],
+Tarihlerini kontrol ettik fakat maalesef belirtilen tarihlerde ({check_in} - {check_out}) {room_type} için doluyuz. 😔
 
-Tarihlerini kontrol ettik fakat maalesef belirtilen tarihlerde [Oda Tipi] için doluyuz. 😔
-
-Ancak şu tarihlerde sana harika bir yer açabiliriz:
-🗓️ **[Alternatif Tarihler]**
-
-Ya da istersen aynı tarihlerde **[Alternatif Oda]** seçeneğimiz müsait.
+Ancak seninle alternatif tarihleri veya oda seçeneklerini konuşmak isteriz.
 
 Haberleşelim, senin için en güzelini ayarlayalım! 🧿
 Warm hugs!""",
-            "👥 Grup Rezervasyonu (Event Sorusu)": """Sevgili [Ad],
-
-Kalabalık gelmeniz harika olur! Bonjuk toplu enerjiyi çok sever. 🧿
-Grup rezervasyonlarında süreci daha rahat yönetebilmek için bazı detaylara ihtiyacımız var:
-
-- Tam kişi sayısı
-- Kadın/Erkek dağılımı (Oda yerleşimi için)
-- Özel bir kutlama/event planınız var mı?
-
-Bu detayları paylaşırsan size özel bir plan çıkaralım.
-Warm hugs! ✨""",
-            "⏳ Ödeme Hatırlatma": """Sevgili [Ad],
+            "⏳ Ödeme Hatırlatma": f"""Sevgili {first_name},
 
 Selamlar! Rezervasyon opsiyonunun süresi dolmak üzere.
 Yerini tutmaya devam etmek istiyoruz ama sistemi açmamız gerekebilir.
 
-Eğer hala gelmeyi planlıyorsan, lütfen bugün içinde dekontu veya ödeme bilgisini bizimle paylaş.
+Eğer hala gelmeyi planlıyorsan, lütfen bugün içinde dekontu bizimle paylaş.
 Bir aksilik varsa da haber ver, yardımcı olalım.
 
 Sevgiler,
@@ -309,41 +335,64 @@ Bonjuk Bay Team 🧿"""
         }
     else:
         templates = {
-            "🆕 New Request Welcome": """Dear [Guest Name],
+            "🆕 New Request Welcome": f"""Dear {first_name},
 
 Your reservation request has reached us. We will contact you as soon as possible.
 
 **Reservation Details:**
-- Guest Name: [Full Name]
-- Room Type: [Room Type]
-- Check-In: [Date]
-- Check-Out: [Date]
-- Pax: [Count]
+- Guest Name: {guest_name}
+- Room Type: {room_type}
+- Check-In: {check_in}
+- Check-Out: {check_out}
+- Pax: {pax}
 
-Thank you for choice... 
+Thank you,
 Bonjuk Bay Team 🧿""",
-            "❓ Missing Information": """Hi [Guest Name],
+            "❓ Missing Information": f"""Hi {first_name},
 
 We are excited about your request! 🧿 However, we need one more little piece of information to prepare the best offer for you:
- 
-**Missing Information:** [Field Name]
+
+**Missing Information:** {missing_info_str}
 
 Once you share this with us, we will send your offer immediately.
 
-Warm hugs! 🕯️✨""",
-            "✅ Confirmation & Payment": """Hi [Guest Name],
+Warm hugs! ✨""",
+            "✅ Confirmation & Payment": f"""Hi {first_name},
 
-We can't wait to see you with us! 🧿 We have optioned your reservation for 24 hours. To complete your registration, please follow the payment details.
+Thank you for your interest in Bonjuk Bay! We can't wait to see you with us.
 
-**Summary Details:**
-- Dates: [Check-In] - [Check-Out]
-- Room: [Room Type]
-- Amount: [Amount]
+📄 Price List: https://bonjukbay.com/price
+🏠 Accommodation: https://bonjukbay.com/accommodation
 
-See you soon! 🌞
-Warm hugs!"""
+We have optioned your reservation for {room_type} between {check_in} - {check_out} for 24 hours.
+
+🏦 Bank Details:
+Account Name: GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
+IBAN: TR490006701000000034479515
+SWIFT (EUR/USD): YAPITRISXXX
+Reference: {guest_name} / {check_in}
+
+Warm hugs! 🧿""",
+            "🚫 Not Available": f"""Dear {first_name},
+
+We checked the dates but unfortunately {room_type} is fully booked for {check_in} - {check_out}. 😔
+
+However, we would love to discuss alternative dates or room options with you.
+
+Let's find the best solution for you! 🧿
+Warm hugs!""",
+            "⏳ Payment Reminder": f"""Dear {first_name},
+
+Just a friendly reminder that your reservation option is about to expire.
+We want to keep your spot, but we may need to release it soon.
+
+If you're still planning to come, please share the payment receipt with us today.
+
+Best regards,
+Bonjuk Bay Team 🧿"""
         }
 
     for title, content in templates.items():
         with st.expander(title):
-            st.text_area("Yanıt Metni:", value=content, height=150, key=f"tpl_{title}")
+            st.text_area("Yanıt Metni:", value=content, height=200, key=f"tpl_{title}")
+

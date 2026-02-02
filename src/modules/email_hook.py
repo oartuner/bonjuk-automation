@@ -1,9 +1,6 @@
-import os
 import logging
 from imap_tools import MailBox, AND
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.config import config
 
 logger = logging.getLogger("BonjukOps.Email")
 
@@ -12,41 +9,41 @@ class EmailHook:
     E-posta kutusuna bağlanıp rezervasyon maillerini yakalayan servis.
     """
     def __init__(self):
-        self.host = os.getenv("EMAIL_HOST")
-        port_val = os.getenv("EMAIL_PORT")
-        self.port = int(port_val) if port_val and port_val.isdigit() else 993
-        self.user = os.getenv("EMAIL_USER")
-        self.password = os.getenv("EMAIL_PASS")
-        
-        if not all([self.host, self.user, self.password]):
-            logger.warning("E-posta konfigürasyonu eksik. EmailHook devre dışı.")
-            self.enabled = False
-        else:
-            self.enabled = True
-            logger.info(f"EmailHook hazır: {self.user}")
+        self.enabled = config.validate_email_config()
+        if self.enabled:
+            logger.info(f"EmailHook başlatılıyor: {config.EMAIL_USER} ({config.EMAIL_HOST})")
 
     def fetch_unseen_emails(self, limit=5):
         """
         Okunmamış son mailleri getirir.
         """
         if not self.enabled:
+            logger.warning("EmailHook devre dışı, e-posta kontrolü yapılamıyor.")
             return []
 
         emails = []
         try:
-            with MailBox(self.host).login(self.user, self.password) as mailbox:
-                # 'UNSEEN' olan ve 'Reservation' içeren mailleri ara
+            # Bağlantı kur
+            logger.info("IMAP sunucusuna bağlanılıyor...")
+            with MailBox(config.EMAIL_HOST).login(config.EMAIL_USER, config.EMAIL_PASS) as mailbox:
+                logger.info("✅ Bağlantı başarılı! Klasör taranıyor...")
+                
+                # 'UNSEEN' mailleri ara
+                # Not: Bazen tarih sırası karışabilir, reverse=True en yenileri getirir.
                 for msg in mailbox.fetch(AND(seen=False), limit=limit, reverse=True):
                     emails.append({
                         "subject": msg.subject,
                         "from": msg.from_,
-                        "date": msg.date,
+                        "date": msg.date_str, # Daha okunaklı tarih formatı
                         "body": msg.text or msg.html,
                         "id": msg.uid
                     })
+                    
+            logger.info(f"📬 {len(emails)} adet okunmamış e-posta bulundu.")
             return emails
+            
         except Exception as e:
-            logger.error(f"E-posta çekme hatası: {e}")
+            logger.error(f"❌ E-posta çekme hatası: {e}")
             return []
 
     def get_sample_email(self):
