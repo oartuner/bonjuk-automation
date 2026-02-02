@@ -53,10 +53,21 @@ def show_dashboard():
     st.title("🧿 Bonjuk Ops Dashboard")
     st.subheader(f"Bugün: {datetime.now().strftime('%d/%m/%Y')}")
     
+    # Gerçek zamanlı mail sayısını al
+    try:
+        emails = email_hook.fetch_unseen_emails(limit=50) if email_hook.enabled else []
+        unread_count = len(emails)
+    except:
+        unread_count = 0
+    
+    # Session state'den rezervasyon sayısı
+    parsed_count = 1 if 'parsed_res' in st.session_state and st.session_state['parsed_res'] else 0
+    
     col1, col2, col3 = st.columns(3)
-    col1.metric("Gelen Talepler", "Aktif", "Mail Hook")
-    col2.metric("Okunmamış Mailler", "Check", "AI Parser")
+    col1.metric("Gelen Talepler", f"{parsed_count} Aktif", "+ Mail Hook" if email_hook.enabled else "⚠️ Devre Dışı")
+    col2.metric("Okunmamış Mailler", f"{unread_count} Mail", "+ AI Parser" if ai_parser.enabled else "⚠️ Devre Dışı")
     col3.metric("Transfer Talebi", "Sistem Hazır", "🧿")
+
 
     st.divider()
 
