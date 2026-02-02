@@ -224,7 +224,7 @@ elif menu == "📅 Rezervasyon Talebi":
                 st.session_state['ai_reply'] = reply
 
         if st.session_state.get('ai_reply'):
-            st.text_area("Hazırlanan Yanıt:", value=st.session_state['ai_reply'], height=300, key="final_ai_reply")
+            st.text_area("Hazırlanan Yanıt:", value=st.session_state['ai_reply'], height=300, key="final_ai_reply_v2")
             
             # WhatsApp & Email Redirects
             encoded_text = urllib.parse.quote(st.session_state['ai_reply'])
@@ -425,5 +425,6 @@ Bonjuk Bay Team 🧿"""
 
     for title, content in templates.items():
         with st.expander(title):
-            st.text_area("Yanıt Metni:", value=content, height=200, key=f"tpl_{title}")
+            # Key'in sonuna _v2 ekledik ki cache temizlensin, yeni linkler görünsün
+            st.text_area("Yanıt Metni:", value=content, height=200, key=f"tpl_{title}_v2")
 
