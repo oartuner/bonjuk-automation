@@ -1,12 +1,21 @@
+
 import streamlit as st
 import pandas as pd
 import logging
 import urllib.parse
 from datetime import datetime
-from modules.reservation import validate_reservation
-from modules.transfers import determine_vehicle_type, get_transfer_price_estimate, generate_supplier_order
-from modules.email_hook import email_hook
-from modules.ai_parser import ai_parser
+import sys
+import os
+
+# Streamlit Cloud için path ayarı (src klasörünü python path'e ekle)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
+from src.modules.reservation import validate_reservation
+from src.modules.transfers import determine_vehicle_type, get_transfer_price_estimate, generate_supplier_order
+from src.modules.email_hook import email_hook
+from src.modules.ai_parser import ai_parser
 from src.config import config
 
 # Logging
