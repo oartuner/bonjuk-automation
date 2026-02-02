@@ -49,16 +49,23 @@ if 'temp_res_data' not in st.session_state:
 if 'mail_transfer_success' not in st.session_state:
     st.session_state['mail_transfer_success'] = False
 
+@st.cache_data(ttl=300)  # 5 dakika önbellek
+def get_unread_email_count():
+    """Gmail'deki okunmamış mail sayısını cache'leyerek hızlı döndürür"""
+    try:
+        if email_hook.enabled:
+            emails = email_hook.fetch_unseen_emails(limit=50)
+            return len(emails)
+    except:
+        pass
+    return 0
+
 def show_dashboard():
     st.title("🧿 Bonjuk Ops Dashboard")
     st.subheader(f"Bugün: {datetime.now().strftime('%d/%m/%Y')}")
     
-    # Gerçek zamanlı mail sayısını al
-    try:
-        emails = email_hook.fetch_unseen_emails(limit=50) if email_hook.enabled else []
-        unread_count = len(emails)
-    except:
-        unread_count = 0
+    # Cache'lenmiş mail sayısı
+    unread_count = get_unread_email_count()
     
     # Session state'den rezervasyon sayısı
     parsed_count = 1 if 'parsed_res' in st.session_state and st.session_state['parsed_res'] else 0
