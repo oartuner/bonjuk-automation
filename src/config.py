@@ -39,32 +39,57 @@ def get_setting(key, default=None):
         
     return default
 
-# Konfigürasyon Sınıfı
+
+# Basit ve Etkili Config Sınıfı
 class Config:
-    # App
-    ENV = os.getenv("APP_ENV", "development")
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    @staticmethod
+    def get(key, default=None):
+        """Değeri env veya st.secrets'tan okur"""
+        # 1. Environment variable
+        val = os.getenv(key)
+        if val:
+            return val
+        
+        # 2. Streamlit secrets
+        try:
+            import streamlit as st
+            if key in st.secrets:
+                return st.secrets[key]
+        except:
+            pass
+        
+        return default
     
-    # Email (Gmail/Outlook)
-    EMAIL_HOST = get_setting("EMAIL_HOST")
-    EMAIL_PORT = int(get_setting("EMAIL_PORT", "993"))
-    EMAIL_USER = get_setting("EMAIL_USER")
-    EMAIL_PASS = get_setting("EMAIL_PASS")
+    # Değerleri dinamik olarak okuyoruz
+    @property
+    def EMAIL_HOST(self):
+        return self.get("EMAIL_HOST")
     
-    # AI
-    GEMINI_API_KEY = get_setting("GEMINI_API_KEY")
+    @property
+    def EMAIL_PORT(self):
+        return int(self.get("EMAIL_PORT", "993"))
+    
+    @property
+    def EMAIL_USER(self):
+        return self.get("EMAIL_USER")
+    
+    @property
+    def EMAIL_PASS(self):
+        return self.get("EMAIL_PASS")
+    
+    @property
+    def GEMINI_API_KEY(self):
+        return self.get("GEMINI_API_KEY")
 
-    # Supabase (Optional)
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-    @classmethod
-    def validate_email_config(cls):
+    def validate_email_config(self):
         """Email ayarlarının eksiksiz olup olmadığını kontrol eder."""
-        if not all([cls.EMAIL_HOST, cls.EMAIL_USER, cls.EMAIL_PASS]):
-            logger.error("❌ E-posta ayarları EKSİK! Lütfen .env dosyasını kontrol edin.")
+        if not all([self.EMAIL_HOST, self.EMAIL_USER, self.EMAIL_PASS]):
+            logger.error("❌ E-posta ayarları EKSİK")
+            logger.error(f"HOST: {self.EMAIL_HOST}, USER: {self.EMAIL_USER}, PASS: {'***' if self.EMAIL_PASS else None}")
             return False
+        logger.info(f"✅ Email config OK: {self.EMAIL_USER}")
         return True
 
-# Global erişim için
+# Global config instance
 config = Config()
+
