@@ -13,7 +13,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 from src.modules.reservation import validate_reservation
-from src.modules.transfers import determine_vehicle_type, get_transfer_price_estimate, generate_supplier_order
+
 from src.modules.email_hook import email_hook
 from src.modules.ai_parser import ai_parser
 from src.config import config
@@ -41,7 +41,7 @@ st.markdown("""
 
 # Sidebar
 st.sidebar.title("🧿 Bonjuk Ops")
-menu = st.sidebar.radio("Menü", ["🏠 Ana Sayfa", "📅 Rezervasyon Talebi", "🚗 Transfer Planlayıcı", "📜 Hazır Yanıtlar"])
+menu = st.sidebar.radio("Menü", ["🏠 Ana Sayfa", "📅 Rezervasyon Talebi", "📜 Hazır Yanıtlar"])
 
 # Session State Başlatma (Eğer yoksa)
 if 'temp_res_data' not in st.session_state:
@@ -256,20 +256,7 @@ elif menu == "📅 Rezervasyon Talebi":
                 
             st.info("💡 Yukarıdaki butonlar metni otomatik olarak ilgili uygulamaya taşır.")
 
-elif menu == "🚗 Transfer Planlayıcı":
-    st.header("Araç ve Fiyat Planlayıcı")
-    pax = st.number_input("Yolcu Sayısı", min_value=1, value=1, key="transfer_pax_input")
-    route = st.selectbox("Güzergah", ["Dalaman-Bonjuk", "Bodrum-Bonjuk"], key="transfer_route_select")
-    
-    vehicle = determine_vehicle_type(pax)
-    estimate = get_transfer_price_estimate(route, pax)
-    
-    st.metric("Önerilen Araç", vehicle)
-    st.metric("Tahmini Maliyet", f"{estimate} TL")
-    
-    if st.button("Tedarikçi İş Emri Hazırla"):
-        order = generate_supplier_order("Misafir", route, "Belirtilmedi", pax, "Belirtilmedi")
-        st.text_area("İş Emri Metni:", value=order, height=250)
+
 
 elif menu == "📜 Hazır Yanıtlar":
     st.header("📖 Bonjuk Bay Ortak Yanıt Kütüphanesi")
