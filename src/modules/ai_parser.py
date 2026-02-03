@@ -2,6 +2,7 @@ import logging
 import json
 import requests
 from src.config import config
+from src.modules.content import get_event_for_date, TEMPLATES
 
 logger = logging.getLogger("BonjukOps.AI")
 
@@ -47,6 +48,7 @@ class AIParser:
         - guest_language (tr veya en - EĞER 'Id Number' varsa veya 'nationality' Turkish ise KESİNLİKLE 'tr' seç. Sadece 'Passport Number' varsa ve Türkçe konuşmuyorsa 'en' seç.)
         - nationality (Turkish veya Foreign - ID varsa Turkish, Passport varsa Foreign)
         - special_requests (Özel istekler, notlar, mesaj - varsa doğum günü pastası, erken check-in vb.)
+        - has_children (Boolean - Metinde çocuk, bebek, kids, child kavramları geçiyor mu?)
         - missing_info (Eksik olan alanların listesi)
 
         E-posta Metni:
@@ -75,10 +77,23 @@ class AIParser:
             
             if response.status_code == 200:
                 result = response.json()
-                # Gemini bazen markdown içinde döndürür, temizle
                 raw_text = result['candidates'][0]['content']['parts'][0]['text']
                 json_str = raw_text.strip().replace('```json', '').replace('```', '')
-                return json.loads(json_str)
+                parsed = json.loads(json_str)
+
+                # Event Kontrolü (Content Modülünden) - YENİ
+                if 'check_in' in parsed and parsed['check_in']:
+                    event = get_event_for_date(parsed['check_in'])
+                    if event:
+                        parsed['event_name'] = event['name']
+                        parsed['event_fee'] = event.get('fee')
+                        parsed['event_kids_allowed'] = event.get('kids_allowed', False)
+                    else:
+                        parsed['event_name'] = None
+                        parsed['event_fee'] = None
+                        parsed['event_kids_allowed'] = False
+                
+                return parsed
             else:
                 logger.error(f"Gemini API Hatası ({response.status_code}): {response.text}")
                 return None
@@ -90,132 +105,78 @@ class AIParser:
     def generate_response(self, parsed_data: dict, template_type: str):
         """
         Ayrıştırılmış veriyi ve seçilen şablon tipini kullanarak AI ile yanıt üretir.
+        GÜNCELLEME: Artık manuel template yerine content.py'deki standart şablonları kullanır.
         """
-        if not self.enabled:
-            return "AI Devre Dışı."
+        try:
+            first_name = parsed_data.get('guest_name', 'Misafir').split()[0].title()
+            lang_code = parsed_data.get('guest_language', 'tr')
+            if lang_code not in ['tr', 'en']: lang_code = 'tr'
 
-        # Şablonları oku (Gerçek dünyada dosyadan okunmalı, şimdilik direkt prompt'a ekliyorum)
-        templates_context = """
-        Şablon 1 (Eksik Bilgi - TR):
-        Sevgili {guest_name},
-        
-        Rezervasyon talebin harika görünüyor. Seni aramızda görmeyi çok isteriz.
-        Size en uygun yerleşimi yapabilmemiz için ufak bir detaya ihtiyacımız var:
-        👉 {missing_info}
-        
-        Bu bilgiyi bizimle paylaşırsan işlemlere hemen devam edebiliriz.
-        Warm hugs! ✨
-
-        Şablon 2 (Konfirmasyon - TR):
-        Sevgili {guest_name},
-
-        Bonjuk Bay'e ilgine teşekkür ederiz, sizi aramızda görmeyi çok isteriz.
-
-        Referans olması için 2026 fiyat listemize ve konaklama seçeneklerimize aşağıdaki bağlantılardan ulaşabilirsin:
-        
-        2026 Fiyat Listesi:
-        https://bit.ly/Bonjukbay_FiyatListesi
-        
-        Konaklama Seçenekleri:
-        https://bonjukbay.com/accommodation.html
-
-        {check_in} - {check_out} tarihleri arasındaki rezervasyonunu {accommodation_type} için opsiyonladık.
-
-        Rezervasyonunu onaylamak için aşağıdaki hesap bilgilerimize ödeme göndermeni ve dekontu bizimle paylaşmanı rica ederiz.
-        
-        Kredi kartıyla ödemek istersen de aşağıdaki linki kullanabilirsin:
-        [ÖDEME LINKI]
-
-        Rezervasyonunu 24 saatliğine opsiyonluyoruz.
-
-        Hesap Adı : GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
-        IBAN : TR490006701000000034479515
-        SWIFT Kodu (EUR, USD) : YAPITRISXXX
-        SWIFT Kodu (Diğer Döviz Cinsleri) : YAPITRISFEX
-        Açıklama: {guest_name} / {check_in}
-
-        2026 Update: Bu sezon ritmimizi biraz daha gündüze taşıyoruz. Hafta sonu 01:00’den sonra müzik olmayacak. Doğanın, dengenin ve anda kalmanın önceliklendiği; daha yumuşak, daha bilinçli ve daha sağlıklı bir Bonjuk deneyimine davetlisin!
-        
-        Warm hugs!
-        """
-
-        # Verileri önceden temizle (Python tarafında) - AI'ya bırakma
-        raw_name = parsed_data.get('guest_name', 'Misafir')
-        # Sadece ilk ismi al ve baş harfini büyüt (örn: ALPER YILMAZ -> Alper)
-        first_name = raw_name.split()[0].title() if raw_name else "Misafir"
-        
-        # Prompt'a gidecek veriyi güncelle
-        prompt_data = parsed_data.copy()
-        prompt_data['guest_name'] = first_name
-
-        prompt = f"""
-        Aşağıdaki verileri kullanarak, Bonjuk Bay'in sıcak ve samimi dilinde bir yanıt taslağı oluştur.
-        
-        KESİN KURALLAR (Bunlara uymazsan sistem hata verir):
-        1. Asla "Konu:" veya "Subject:" satırı ekleme.
-        2. DOĞRUDAN "Sevgili {first_name}," ile başla. (İsim aynen bu şekilde yazılmalı).
-        3. EMOJİ KULLANIMI YASAK: Metin içinde 🔗, 🙏, 💳, ⏳ gibi simgeler KESİNLİKLE kullanma.
-        4. Sadece kapanışta 1 adet 🌞 veya ✨ kullanabilirsin. Başka emoji yasak.
-        5. "{first_name}" ismini kullan, soyadı kullanma.
-        
-        Veriler:
-        {json.dumps(prompt_data)}
-        
-        Şablon Bağlamı (Referans al):
-        {templates_context}
-        
-        İstenen Yanıt Tipi: {template_type}
-        """
-
-        # Retry mekanizması
-        max_retries = 3
-        retry_delay = 5  # saniye
-
-        for attempt in range(max_retries):
-            try:
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": prompt}
-                            ]
-                        }
-                    ]
-                }
+            # Şablon Seçimi
+            # template_type değerini map'le
+            tpl_key = "welcome"
+            if "Konfirmasyon" in template_type or "Confirmation" in template_type:
+                tpl_key = "confirm_payment"
+            elif "Eksik" in template_type or "Missing" in template_type:
+                # Eksik bilgide özel logic yok, direkt eksik alanları yazıyoruz
+                # Ama content.py'de buna özel şablon yoksa basitçe oluşturabiliriz
+                # Hatta app.py artık manuel şablon kullanıyor, burası AI production için.
+                # Şimdilik basitçe pass geçip context'e ekleyelim.
+                pass 
                 
-                response = requests.post(
-                    f"{self.url}?key={self.api_key}",
-                    headers={"Content-Type": "application/json"},
-                    json=payload,
-                    timeout=20
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    # Gemini bazen markdown içinde döndürür, temizle
-                    raw_text = result['candidates'][0]['content']['parts'][0]['text']
-                    
-                    if template_type == "parsing": 
-                         # JSON temizliği (Markdown bloklarını kaldır)
-                         json_str = raw_text.strip().replace('```json', '').replace('```', '')
-                         return json.loads(json_str)
-
-                    return raw_text # Normal text döner
-
-                elif response.status_code == 429:
-                    logger.warning(f"Rate limit hit. Waiting {attempt+1}")
-                    continue
+            # Content.py içindeki şablonu al
+            # NOT: Kullanıcı AI'nın template'i doldurmasını istiyor, direkt string format değil.
+            # O yüzden template'i prompt'a context olarak vereceğiz.
+            
+            target_template = TEMPLATES[lang_code].get(tpl_key, TEMPLATES[lang_code]["welcome"])
+            
+            # Çocuk Kontrolü & Reddetme
+            if parsed_data.get('has_children') and not parsed_data.get('event_kids_allowed', False):
+                # Çocuk var ama etkinlik izin vermiyor -> Reddet
+                target_template = TEMPLATES[lang_code]["rejection_kids"]
+                template_type = "REJECTION (Child Policy)"
+            
+            # Event Fee Bilgisi
+            event_fee_info = ""
+            if parsed_data.get('event_fee'):
+                if lang_code == 'tr':
+                    event_fee_info = f"Bu etkinlik için ayrıca kişi başı {parsed_data['event_fee']} katılım ücreti bulunmaktadır."
                 else:
-                    error_msg = f"API Hatası: {response.status_code} - {response.text}"
-                    print(error_msg) # Terminalde görmek için
-                    logger.error(error_msg)
-                    return f"Hata: {response.status_code}"
-                    
-            except Exception as e:
-                error_msg = f"AI Hatası Exception: {str(e)}"
-                print(error_msg)
-                logger.error(error_msg)
-                return f"AI Hatası: {str(e)}"
+                    event_fee_info = f"Please note there is an additional participation fee of {parsed_data['event_fee']} per person for this event."
+            
+            # Prompt hazırlığı
+            prompt = f"""
+            GÖREV: Aşağıdaki rezervasyon verilerini kullanarak, ekteki ŞABLONU doldur.
+            
+            KURALLAR:
+            1. Şablondaki metne sadık kal. Sadece {{brackets}} içindeki değişkenleri doldur.
+            2. Eğer şablonda {{event_fee_info}} varsa, verilerdeki 'event_fee_info' metnini oraya koy. Yoksa boş bırak.
+            3. Asla "Konu:" satırı ekleme.
+            4. İsim olarak sadece '{first_name}' kullan.
+            5. Emoji ekleme (Şablondakiler kalsın).
+            
+            VERİLER:
+            {json.dumps(parsed_data, ensure_ascii=False)}
+            Special 'event_fee_info' text: "{event_fee_info}"
+
+            KULLANILACAK ŞABLON (Bunu doldur):
+            ---
+            {target_template}
+            ---
+            """
+
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            
+            # ... (Standart request kodu) ...
+            response = requests.post(f"{self.url}?key={self.api_key}", headers={"Content-Type": "application/json"}, json=payload, timeout=20)
+            
+            if response.status_code == 200:
+                return response.json()['candidates'][0]['content']['parts'][0]['text']
+            else:
+                return f"Hata: {response.status_code}"
+
+        except Exception as e:
+             return f"AI Yanıt Üretme Hatası: {e}"
 
 # Singleton instance
 ai_parser = AIParser()

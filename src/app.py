@@ -1,4 +1,4 @@
-
+﻿
 import streamlit as st
 import pandas as pd
 import logging
@@ -16,6 +16,7 @@ from src.modules.reservation import validate_reservation
 
 from src.modules.email_hook import email_hook
 from src.modules.ai_parser import ai_parser
+from src.modules.content import get_event_for_date, TEMPLATES
 from src.config import config
 
 # Logging
@@ -277,8 +278,11 @@ elif menu == "📜 Hazır Yanıtlar":
     missing_info_str = ', '.join(missing_info) if isinstance(missing_info, list) and missing_info else '[Eksik Bilgi]'
 
     # Otomatik dil seçimi: Türk ise TR, değilse EN
+    # Dil seçenekleri
+    lang_options = ["Türkçe", "English"]
+    
+    # Otomatik dil seçimi: Türk ise TR (index 0), değilse EN (index 1)
     auto_lang_index = 0 if nationality == 'Turkish' else 1
-    lang_options = ["Türkçe 🇹🇷", "English 🇺🇸"]
     
     # Dil seçimi (otomatik önerilir ama kullanıcı değiştirebilir)
     lang_tab = st.radio("Dil Seçimi / Language Selection", lang_options, index=auto_lang_index, horizontal=True)
@@ -286,132 +290,86 @@ elif menu == "📜 Hazır Yanıtlar":
     if res_data or parsed_res:
         st.success(f"📌 Aktif Rezervasyon: **{guest_name}** | {check_in} → {check_out} | {pax} Kişi | {room_type}")
 
-    if lang_tab == "Türkçe 🇹🇷":
-        templates = {
-            "🆕 Yeni Talep Karşılama": f"""Sevgili {first_name},
+    # Event Kontrolü (Manuel şablonlar için de)
+    event_fee_info = ""
+    event_name = parsed_res.get('event_name')
+    
+    # Eğer parsed_res'te yoksa (manuel girildiyse), tarihten bulmaya çalış
+    if not event_name and check_in != '[Giriş Tarihi]':
+         evt = get_event_for_date(check_in)
+         if evt:
+             event_name = evt['name']
+             parsed_res['event_fee'] = evt.get('fee')
 
-Rezervasyon talebiniz bize ulaştı. En kısa sürede sizinle iletişime geçeceğiz.
-
-**Rezervasyon Detayları:**
-- Misafir Adı: {guest_name}
-- Oda Tipi: {room_type}
-- Giriş: {check_in}
-- Çıkış: {check_out}
-- Kişi Sayısı: {pax}
-
-Teşekkürler,
-Bonjuk Bay Team 🧿""",
-            "❓ Eksik Bilgi Talebi": f"""Sevgili {first_name},
-
-Rezervasyon talebin harika görünüyor. Seni aramızda görmeyi çok isteriz.
-
-Size en uygun yerleşimi yapabilmemiz için ufak bir detaya ihtiyacımız var:
-👉 **{missing_info_str}**
-
-Bu bilgiyi bizimle paylaşırsan işlemlere hemen devam edebiliriz.
-
-Warm hugs! ✨""",
-            "✅ Konfirmasyon & Ödeme": f"""Sevgili {first_name},
-
-Bonjuk Bay'e ilgine teşekkür ederiz, sizi aramızda görmeyi çok isteriz.
-
-Referans olması için 2026 fiyat listemize ve konaklama seçeneklerimize aşağıdaki bağlantılardan ulaşabilirsin:
-
-📄 Fiyat Listesi: https://bit.ly/Bonjukbay_FiyatListesi
-🏠 Konaklama: https://bonjukbay.com/accommodation.html
-
-{check_in} - {check_out} tarihleri arasındaki rezervasyonunu {room_type} için opsiyonladık.
-
-Rezervasyonunu onaylamak için aşağıdaki hesap bilgilerimize ödeme göndermeni ve dekontu bizimle paylaşmanı rica ederiz.
-
-Rezervasyonunu 24 saatliğine opsiyonluyoruz.
-
-🏦 Hesap Adı: GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
-IBAN: TR490006701000000034479515
-SWIFT (EUR/USD): YAPITRISXXX
-Açıklama: {guest_name} / {check_in}
-
-Warm hugs! 🧿""",
-            "🚫 Müsaitlik Yok": f"""Sevgili {first_name},
-
-Tarihlerini kontrol ettik fakat maalesef belirtilen tarihlerde ({check_in} - {check_out}) {room_type} için doluyuz. 😔
-
-Ancak seninle alternatif tarihleri veya oda seçeneklerini konuşmak isteriz.
-
-Haberleşelim, senin için en güzelini ayarlayalım! 🧿
-Warm hugs!""",
-            "⏳ Ödeme Hatırlatma": f"""Sevgili {first_name},
-
-Selamlar! Rezervasyon opsiyonunun süresi dolmak üzere.
-Yerini tutmaya devam etmek istiyoruz ama sistemi açmamız gerekebilir.
-
-Eğer hala gelmeyi planlıyorsan, lütfen bugün içinde dekontu bizimle paylaş.
-Bir aksilik varsa da haber ver, yardımcı olalım.
-
-Sevgiler,
-Bonjuk Bay Team 🧿"""
-        }
+    # Seçilen dile göre lang_code belirle
+    selected_lang = lang_tab.strip()
+    if "Türkçe" in selected_lang:
+        lang_code = "tr"
+    elif "English" in selected_lang:
+        lang_code = "en"
     else:
-        templates = {
-            "🆕 New Request Welcome": f"""Dear {first_name},
+        lang_code = "en" # Varsayılan
+        
+    available_templates = TEMPLATES[lang_code]
 
-Your reservation request has reached us. We will contact you as soon as possible.
+    # Debug: Hangi dilin yüklendiğini gör (Sadece geliştirme için, istersen silebilirsin)
+    # st.sidebar.write(f"DEBUG: Lang Code = {lang_code}, Selected = {selected_lang}")
 
-**Reservation Details:**
-- Guest Name: {guest_name}
-- Room Type: {room_type}
-- Check-In: {check_in}
-- Check-Out: {check_out}
-- Pax: {pax}
+    if parsed_res.get('event_fee'):
+        if lang_code == "tr":
+             event_fee_info = f"Bu etkinlik ({event_name}) için ayrıca kişi başı {parsed_res['event_fee']} katılım ücreti bulunmaktadır."
+        else:
+             event_fee_info = f"Please note there is an additional participation fee of {parsed_res['event_fee']} per person for this event ({event_name})."
 
-Thank you,
-Bonjuk Bay Team 🧿""",
-            "❓ Missing Information": f"""Hi {first_name},
+    for title_key, template_content in available_templates.items():
+        # Başlıkları dile göre ayarla
+        if lang_code == "tr":
+            # Türkçe başlıklar
+            if title_key == "welcome": display_title = "🆕 Karşılama"
+            elif title_key == "confirm_payment": display_title = "✅ Konfirmasyon ve Ödeme"
+            elif title_key == "kids_week": display_title = "👶 Kids Week"
+            elif title_key == "rejection_kids": display_title = "🚫 Çocuk Politikası"
+            elif title_key == "rejection_pets": display_title = "🐶 Evcil Hayvan Politikası"
+            elif title_key == "daily_use": display_title = "🏖️ Günübirlik Kullanım"
+            elif title_key == "event_details": display_title = "🎭 Etkinlik Detayları"
+            elif title_key == "minimum_stay": display_title = "📅 Minimum Konaklama"
+            elif title_key == "reservation_cancelled": display_title = "❌ Rezervasyon İptali"
+            elif title_key == "check_in_info": display_title = "🏠 Check-in Bilgileri"
+            elif title_key == "airport_transfer": display_title = "✈️ Havalimanı Transferi"
+            else: display_title = title_key.replace("_", " ").title()
+        else:
+            # İngilizce başlıklar
+            if title_key == "welcome": display_title = "🆕 Welcome"
+            elif title_key == "confirm_payment": display_title = "✅ Confirmation & Payment"
+            elif title_key == "kids_week": display_title = "👶 Kids Week"
+            elif title_key == "rejection_kids": display_title = "🚫 Child Policy"
+            elif title_key == "rejection_pets": display_title = "🐶 Pet Policy"
+            elif title_key == "daily_use": display_title = "🏖️ Daily Use"
+            elif title_key == "event_details": display_title = "🎭 Event Details"
+            elif title_key == "minimum_stay": display_title = "📅 Minimum Stay"
+            elif title_key == "reservation_cancelled": display_title = "❌ Reservation Cancelled"
+            elif title_key == "check_in_info": display_title = "🏠 Check-in Information"
+            elif title_key == "airport_transfer": display_title = "✈️ Airport Transfer"
+            else: display_title = title_key.replace("_", " ").title()
 
-We are excited about your request! 🧿 However, we need one more little piece of information to prepare the best offer for you:
+        with st.expander(display_title):
+            # Şablonu doldur
+            try:
+                formatted_content = template_content.format(
+                    first_name=first_name,
+                    guest_name=guest_name,
+                    check_in=check_in,
+                    check_out=check_out,
+                    room_type=room_type,
+                    pax=pax,
+                    total_price="[TOPLAM TUTAR]", # Manuel hesaplanmalı veya sorulmalı
+                    deposit_amount="[KAPORA]",
+                    missing_info=missing_info_str,
+                    event_fee_info=event_fee_info,
+                    missing_info_str=missing_info_str # Bazen farklı isimle geçebilir
+                )
+            except KeyError:
+                # Bazı şablonlarda olmayan değişkenler olabilir, ignore et
+                formatted_content = template_content
 
-**Missing Information:** {missing_info_str}
-
-Once you share this with us, we will send your offer immediately.
-
-Warm hugs! ✨""",
-            "✅ Confirmation & Payment": f"""Hi {first_name},
-
-Thank you for your interest in Bonjuk Bay! We can't wait to see you with us.
-
-📄 Price List: https://bit.ly/Bonjukbay_FiyatListesi
-🏠 Accommodation: https://bonjukbay.com/accommodation.html
-
-We have optioned your reservation for {room_type} between {check_in} - {check_out} for 24 hours.
-
-🏦 Bank Details:
-Account Name: GRANT ZAFER TURİZM İNŞAAT MADEN SANAYİ VE TİCARET LİMİTED ŞİRKETİ
-IBAN: TR490006701000000034479515
-SWIFT (EUR/USD): YAPITRISXXX
-Reference: {guest_name} / {check_in}
-
-Warm hugs! 🧿""",
-            "🚫 Not Available": f"""Dear {first_name},
-
-We checked the dates but unfortunately {room_type} is fully booked for {check_in} - {check_out}. 😔
-
-However, we would love to discuss alternative dates or room options with you.
-
-Let's find the best solution for you! 🧿
-Warm hugs!""",
-            "⏳ Payment Reminder": f"""Dear {first_name},
-
-Just a friendly reminder that your reservation option is about to expire.
-We want to keep your spot, but we may need to release it soon.
-
-If you're still planning to come, please share the payment receipt with us today.
-
-Best regards,
-Bonjuk Bay Team 🧿"""
-        }
-
-    for title, content in templates.items():
-        with st.expander(title):
-            # Key'in sonuna _v2 ekledik ki cache temizlensin, yeni linkler görünsün
-            st.text_area("Yanıt Metni:", value=content, height=200, key=f"tpl_{title}_v2")
-
+            st.text_area("Yanıt Metni:", value=formatted_content, height=300, key=f"tpl_{title_key}_{lang_code}_v3")
